@@ -1,0 +1,33 @@
+# Core framework
+langgraph
+langchain
+langchain-core
+langchain-google-genai
+langchain-openai
+langchain-community
+openai
+tiktoken
+fastapi
+uvicorn
+
+# Data fetching
+feedparser
+requests
+trafilatura
+pypdf
+
+# Vector store
+chromadb
+
+# Database
+asyncpg
+sqlalchemy
+
+# Utilities
+pydantic
+python-dotenv
+tenacity
+httpx
+
+# Frontend (dev/testing)
+streamlit

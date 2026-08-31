@@ -1,0 +1,22 @@
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables & Secrets (Contains API Keys)
+.env
+*.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# macOS System Files
+.DS_Store
+
+# IDE Settings
+.vscode/
+.idea/
+
