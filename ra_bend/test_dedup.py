@@ -1,5 +1,4 @@
-# Deduplication Layer — Gemini Embeddings + Cosine Similarity + Gemma Judge
-
+from agents.scout import fetch_rss_feeds
 import json
 import numpy as np
 from dotenv import load_dotenv
@@ -19,11 +18,8 @@ class OpSchema(BaseModel):
         description="Reason why the news item was rejected, or 'None'."
     )
 
-
-def remove_duplicates(state: PipelineState) -> PipelineState:
-    news_items = state["items"]
-    if not news_items:
-        return state
+def remove_duplicates(result) :
+    news_items = result
 
     items_to_keep = []
 
@@ -80,6 +76,7 @@ def remove_duplicates(state: PipelineState) -> PipelineState:
                 continue
 
             if dot_product_matrix[i][j] > similarity_threshold:
+                print("\n for this run \n")
                 try:
                     response = chain.invoke({
                         "snip1": texts[i],
@@ -108,9 +105,12 @@ def remove_duplicates(state: PipelineState) -> PipelineState:
             items_to_keep.append(item)
 
     total_removed = len(to_remove)
-    state["items"] = items_to_keep
-    state["duplicates_removed"] = total_removed
+    
 
     print(f"[Dedup] Original: {len(news_items)} | Kept: {len(items_to_keep)} | Removed: {total_removed}")
 
-    return state
+    return items_to_keep
+
+if __name__ == "__main__" :
+    results = fetch_rss_feeds()
+    items_to_keep = remove_duplicates(result=results)
