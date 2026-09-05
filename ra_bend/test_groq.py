@@ -1,25 +1,24 @@
 import os
 from dotenv import load_dotenv
-from groq import Groq
 from langchain_groq import ChatGroq
 
+# Load environment variables from .env (expects GROQ_API_KEY)
 load_dotenv()
 
-# Step 1: List all active models available for your Groq API key
-print("Fetching available models from Groq...")
-groq_client = Groq()
-models = [m.id for m in groq_client.models.list().data]
-print(f"Available Groq models: {models}\n")
+# Active text models available on your Groq account:
+# - "qwen/qwen3.6-27b"
+# - "qwen/qwen3.8-27b"
+# - "openai/gpt-oss-120b"
+# - "openai/gpt-oss-20b"
 
-# Use the first active model or a standard model like llama3-8b-8192 / mixtral-8x7b-32768
-target_model = models[0] if models else "llama3-8b-8192"
-print(f"Testing model: {target_model}")
-
-# Step 2: Test via LangChain ChatGroq
+# Initialize ChatGroq
 llm = ChatGroq(
-    model=target_model,
+    model="qwen/qwen3.6-27b",
     temperature=0.7,
 )
 
+# Invoke the model
 response = llm.invoke("What is the capital of France?")
-print(f"\nResponse:\n{response.content}")
+
+# Print response
+print(response.content)
