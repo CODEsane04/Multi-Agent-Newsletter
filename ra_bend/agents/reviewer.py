@@ -4,9 +4,27 @@ import json
 from graph.state import PipelineState
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
+from pydantic import BaseModel, Field
+from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
+
+#--------- SCHEMA ------------
+class review_schema(BaseModel) :
+    verdict : str = Field(description="The evaluation decision: return 'APPROVED' if all claims are factually supported by the source material, or 'REJECTED' if any claim is fabricated or contradictory.")
+    feedback : str = Field(description="If REJECTED, provide a concise explanation of the factual error or unverified claim and how to correct it; if APPROVED, return 'None'.")
+
+#---------- LLM -------------
+
+llm = ChatGoogleGenerativeAI(
+    model="gemma-4-26b-a4b-it",
+    temperature=0.1
+)
+
+structured_reviewer = llm.with_structured_output(schema=review_schema.model_json_schema(), method="json_schema")
+
+
 
 reviewer_model = ChatGoogleGenerativeAI(
     model="gemma-4-31b-it",
@@ -19,7 +37,6 @@ GENERAL_REVIEW_PROMPT = """You are a pragmatic fact-checker for an AI newsletter
 
 REFERENCE CONTEXT (source of truth):
 Title: {title}
-Snippet: {snippet}
 Full Article: {full_article}
 
 CLAIMS TO VERIFY (from the writer's draft):
@@ -33,7 +50,7 @@ RULES:
 - Only reject if there is a genuine factual error or fabrication
 
 Respond with ONLY a valid JSON object:
-{{"verdict": "approved" | "rejected", "note": "1-2 sentence explanation of your decision"}}
+{{"verdict": "approved" | "rejected", "feedback": "clearly justify your decision, if you have decide to reject, then clearly mention the wrongly stated facts, and how should the writer agent state the fact correctly, keep the feedback short and precise"}}
 
 Return ONLY the JSON. No extra text."""
 
@@ -42,7 +59,6 @@ RESEARCH_REVIEW_PROMPT = """You are a pragmatic fact-checker for an AI research 
 
 REFERENCE CONTEXT (source of truth):
 Title: {title}
-Snippet: {snippet}
 Full Article: {full_article}
 
 PAPER AUTHORS: {paper_author}
@@ -59,7 +75,7 @@ RULES:
 - Only reject if there is a genuine factual error or fabrication
 
 Respond with ONLY a valid JSON object:
-{{"verdict": "approved" | "rejected", "note": "1-2 sentence explanation of your decision"}}
+{{"verdict": "approved" | "rejected", "feedback": "clearly justify your decision, if you have decide to reject, then clearly mention the wrongly stated facts, and how should the writer agent state the fact correctly, keep the feedback short and precise"}}
 
 Return ONLY the JSON. No extra text."""
 
@@ -67,6 +83,9 @@ Return ONLY the JSON. No extra text."""
 def review_writer(state: PipelineState) -> PipelineState:
     news_items = state["items"]
     total_items_rejected = 0;
+
+    SESSION_PROMPT = """"""
+
     for item in news_items:
         # Skip items without a draft
         if not item.get("writer_draft"):
@@ -84,47 +103,58 @@ def review_writer(state: PipelineState) -> PipelineState:
         # ─── Build the review prompt based on class ───
         if news_class == 2:
             arxiv = dc.get("arxiv_data") or {}
-            prompt = RESEARCH_REVIEW_PROMPT.format(
-                title=dc.get("title", ""),
-                snippet=dc.get("snippet", ""),
-                full_article=dc.get("full_article", "")[:2000],
-                paper_author=arxiv.get("paper_author", "Not available"),
-                paper_abstract=arxiv.get("paper_abstract", "Not available"),
-                summary=summary,
+
+            SESSION_PROMPT = PromptTemplate(
+                template=RESEARCH_REVIEW_PROMPT,
+                input_variables=["title", "full_article","paper_author", "paper_abstract", "summary"]
             )
+
+            SESSION_PROMPT = SESSION_PROMPT.invoke({
+                "title" : dc.get("title", ""),
+                "full_article" : dc.get("full_article", ""),
+                "paper_author" : arxiv.get("paper_author", "Not available"),
+                "paper_abstract" : arxiv.get("paper_abstract", "Not available"),
+                "summary" : summary,
+            })
+        
         else:
-            prompt = GENERAL_REVIEW_PROMPT.format(
-                title=dc.get("title", ""),
-                snippet=dc.get("snippet", ""),
-                full_article=dc.get("full_article", "")[:2000],
-                summary=summary,
+
+            SESSION_PROMPT = PromptTemplate(
+                template=GENERAL_REVIEW_PROMPT,
+                input_variables=["title", "full_article","summary"]
             )
+
+            SESSION_PROMPT = SESSION_PROMPT.invoke({
+                "title" : dc.get("title", ""),
+                "full_article" : dc.get("full_article", ""),
+                "summary" : summary,
+            })
 
         # ─── Call the reviewer model ───
         try:
-            result = chain.invoke(prompt).strip()
+            result = structured_reviewer.invoke(SESSION_PROMPT)
 
-            # Parse JSON response
-            cleaned = result
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[1]
-            if cleaned.endswith("```"):
-                cleaned = cleaned.rsplit("```", 1)[0]
-            cleaned = cleaned.strip()
+            # # Parse JSON response
+            # cleaned = result
+            # if cleaned.startswith("```"):
+            #     cleaned = cleaned.split("\n", 1)[1]
+            # if cleaned.endswith("```"):
+            #     cleaned = cleaned.rsplit("```", 1)[0]
+            # cleaned = cleaned.strip()
 
-            decision = json.loads(cleaned)
-            verdict = decision.get("verdict", "rejected").upper()
-            note = decision.get("note", "No reason provided.")
+            # decision = json.loads(cleaned)
+            verdict = result.get("verdict", "rejected").upper()
+            feedback = result.get("feedback", "No reason provided.")
 
             item["reviewer_status"] = verdict
-            item["reviewer_reasoning"] = note
+            item["reviewer_reasoning"] = feedback
 
             if verdict == "APPROVED":
                 item["status"] = "approved"
                 print(f"[Reviewer] ✓ Approved: {item['title'][:50]}")
             else:
                 item["status"] = "reviewing"
-                print(f"[Reviewer] ✗ Rejected: {item['title'][:50]} — {note}")
+                print(f"[Reviewer] ✗ Rejected: {item['title'][:50]} — {feedback}")
                 total_items_rejected = total_items_rejected + 1;
 
         except Exception as e:
