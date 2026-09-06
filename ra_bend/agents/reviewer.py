@@ -1,6 +1,5 @@
 # Reviewer Agent — Gemma entailment verification
 
-import json
 from graph.state import PipelineState
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
@@ -24,14 +23,7 @@ llm = ChatGoogleGenerativeAI(
 
 structured_reviewer = llm.with_structured_output(schema=review_schema.model_json_schema(), method="json_schema")
 
-
-
-reviewer_model = ChatGoogleGenerativeAI(
-    model="gemma-4-31b-it",
-    temperature=0.1,
-)
-parser = StrOutputParser()
-chain = reviewer_model | parser
+# -------- PROMPTS ---------------
 
 GENERAL_REVIEW_PROMPT = """You are a pragmatic fact-checker for an AI newsletter. Your job is to verify if the claims in the summary are supported by the source material.
 
@@ -79,6 +71,7 @@ Respond with ONLY a valid JSON object:
 
 Return ONLY the JSON. No extra text."""
 
+#------------ MAIN FUNCTION ------------------
 
 def review_writer(state: PipelineState) -> PipelineState:
     news_items = state["items"]
