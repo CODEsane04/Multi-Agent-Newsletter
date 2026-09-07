@@ -100,6 +100,7 @@ Your task: Rewrite the newsletter section, fixing the issues raised by the revie
 the class specific flow : {class_prompt},
 
 TITLE: {title}
+SNIPPET: {snippet}
 
 SOURCE MATERIAL:
 {full_article}
@@ -235,9 +236,9 @@ prompt_rest = PromptTemplate(
 
         the class specific flow : {class_prompt},
 
-        the actual news : title : {title}, full article : {full_article}
+        the actual news : title : {title}, snippet : {snippet}, full article : {full_article}
     """,
-    input_variables=["GEN_RULES", "class_prompt", "title", "full_article"]
+    input_variables=["GEN_RULES", "class_prompt", "title", "snippet", "full_article"]
 )
 
 prompt_research = PromptTemplate(
@@ -247,11 +248,11 @@ prompt_research = PromptTemplate(
 
         the class specific flow : {class_prompt},
 
-        the actual news : title : {title}, full article : {full_article},
+        the actual news : title : {title}, snippet : {snippet}, full article : {full_article},
 
         arxhiv research paper data, paper author : {author}, paper_abstract : {abstract},
     """,
-    input_variables=["GEN_RULES", "class_prompt", "author", "abstract", "title", "full_article"]
+    input_variables=["GEN_RULES", "class_prompt", "author", "abstract", "title", "snippet", "full_article"]
 )
 
 prompt_sum = PromptTemplate(
@@ -261,7 +262,7 @@ prompt_sum = PromptTemplate(
 
 prompt_rewrite = PromptTemplate(
     template=REWRITE_PROMPT,
-    input_variables=["reviewer_note", "class_prompt", "title", "full_article", "author", "abstract"]
+    input_variables=["reviewer_note", "class_prompt", "title", "snippet", "full_article", "author", "abstract"]
 )
 # ───-------------- Schema ───----------------
 
@@ -328,11 +329,11 @@ def news_writer(state: PipelineState) -> PipelineState:
         item_class = item["news_class"]
         reviewer_status = item.get("reviewer_status")
 
-        title = ""
-        full_article = ""
-
         title = dc.get("title", item.get("title", ""))
-        full_article = dc.get("full_article", "")
+        snippet = dc.get("snippet", item.get("snippet", ""))
+        full_article = dc.get("full_article") or snippet
+
+        print(f" \n len of full article is : {len(full_article)} \n")
 
 
         # ─── Skip if already approved ───
@@ -364,6 +365,7 @@ def news_writer(state: PipelineState) -> PipelineState:
                 "reviewer_note" : reviewer_feedback,
                 "class_prompt" : PROMPT_LIST[item_class],
                 "title" : title,
+                "snippet" : snippet,
                 "full_article" : full_article,
                 "author" : author,
                 "abstract" : abstract,
@@ -388,6 +390,7 @@ def news_writer(state: PipelineState) -> PipelineState:
                     "author" : author,
                     "abstract" : abstract,
                     "title" : title,
+                    "snippet" : snippet,
                     "full_article" : full_article
                     
                 })
@@ -396,6 +399,7 @@ def news_writer(state: PipelineState) -> PipelineState:
                     "GEN_RULES" : GEN_RULES,
                     "class_prompt" : PROMPT_LIST[item_class],
                     "title" : title,
+                    "snippet" : snippet,
                     "full_article" : full_article
                 })
 
@@ -433,97 +437,3 @@ def news_writer(state: PipelineState) -> PipelineState:
     state["items"] = news_items
     print(f"[Writer] Done. Drafted {len(news_items)} items.")
     return state
-
-    # for item in news_items:
-    #     dc = item.get("distilled_context", {})
-    #     item_class = item["news_class"]
-    #     reviewer_status = item.get("reviewer_status")
-
-    #     # ─── Skip if already approved ───
-    #     if reviewer_status == "APPROVED":
-    #         continue
-
-    #     # ─── Build the prompt based on status ───
-    #     if reviewer_status == "REJECTED":
-
-    #         #update the number of iterations
-    #         iterations = state["iterations"]
-    #         iterations = iterations + 1
-    #         state["iterations"] = iterations
-            
-    #         # Rewrite mode — use reviewer feedback + source material
-    #         arxiv_section = ""
-    #         if item_class == 2:
-    #             arxiv = dc.get("arxiv_data") or {}
-    #             if arxiv.get("paper_author"):
-    #                 arxiv_section += f"PAPER AUTHORS: {arxiv['paper_author']}\n"
-    #             if arxiv.get("paper_abstract"):
-    #                 arxiv_section += f"PAPER ABSTRACT: {arxiv['paper_abstract']}\n"
-
-    #         prompt = REWRITE_PROMPT.format(
-    #             reviewer_note=item.get("reviewer_reasoning", "No specific feedback."),
-    #             news_class=class_labels.get(item_class, "General"),
-    #             title=dc.get("title", item["title"]),
-    #             full_article=dc.get("full_article", "")[:2000],
-    #             arxiv_section=arxiv_section,
-    #         )
-    #         print(f"[Writer] Rewriting (attempt {item['retry_count'] + 1}): {item['title'][:50]}")
-
-    #     else:
-    #         # First-time generation (reviewer_status is None)
-    #         if item_class == 2:
-    #             arxiv = dc.get("arxiv_data") or {}
-    #             prompt = RESEARCH_PROMPT.format(
-    #                 title=dc.get("title", item["title"]),
-    #                 snippet=dc.get("snippet", item["snippet"]),
-    #                 full_article=dc.get("full_article", "")[:2000],
-    #                 paper_author=arxiv.get("paper_author", "Not available"),
-    #                 paper_abstract=arxiv.get("paper_abstract", "Not available"),
-    #             )
-    #         else:
-    #             prompt = GENERAL_PROMPT.format(
-    #                 news_class=class_labels.get(item_class, "General"),
-    #                 title=dc.get("title", item["title"]),
-    #                 snippet=dc.get("snippet", item["snippet"]),
-    #                 full_article=dc.get("full_article", "")[:2000],
-    #             )
-
-    #     # ─── Phase 1: Generate/rewrite draft with Sonnet ───
-    #     try:
-    #         resp = client.chat.completions.create(
-    #             model="sonnet",
-    #             messages=[{"role": "user", "content": prompt}],
-    #             max_tokens=600,
-    #             temperature=0.3,
-    #         )
-    #         draft_content = resp.choices[0].message.content
-
-    #         # ─── Phase 2: Summarize into 6 claims with Nova-Pro ───
-    #         summary_prompt = SUMMARY_PROMPT.format(draft=draft_content)
-
-    #         resp2 = client.chat.completions.create(
-    #             model="nova-pro",
-    #             messages=[{"role": "user", "content": summary_prompt}],
-    #             max_tokens=300,
-    #             temperature=0.1,
-    #         )
-    #         summary_text = resp2.choices[0].message.content
-
-    #         # Store in state
-    #         item["writer_draft"] = {
-    #             "full_content": draft_content,
-    #             "summary": summary_text,
-    #         }
-    #         item["status"] = "drafted"
-    #         item["retry_count"] += 1
-    #         print(f"[Writer] Drafted: {item['title'][:50]}")
-
-    #     except Exception as e:
-    #         print(f"[Writer] Error for '{item['title'][:50]}': {e}")
-    #         item["writer_draft"] = None
-    #         item["status"] = "drafted"
-    #         item["error_log"].append(f"[Writer] {e}")
-
-    # state["items"] = news_items
-    # print(f"[Writer] Done. Drafted {len(news_items)} items.")
-    # return state

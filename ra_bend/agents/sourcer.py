@@ -99,6 +99,7 @@ def make_distilled_context(state: PipelineState) -> PipelineState:
                 )
                 if resp.status_code == 200:
                     full_text = trafilatura.extract(resp.text) or ""
+                    print(f"\n[SOURCER] : len of full aricle is : {len(full_text)}]\n")
                 else:
                     full_text = ""
                     item["error_log"].append(f"[Sourcer] HTTP {resp.status_code} for {item['url']}")

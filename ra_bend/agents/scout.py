@@ -13,7 +13,7 @@ feeds = [
     ("Ars Technica AI", "https://feeds.arstechnica.com/arstechnica/technology-lab"),
 ]
 
-MAX_ENTRIES_PER_FEED = 8
+MAX_ENTRIES_PER_FEED = 1
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 

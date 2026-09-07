@@ -29,6 +29,7 @@ GENERAL_REVIEW_PROMPT = """You are a pragmatic fact-checker for an AI newsletter
 
 REFERENCE CONTEXT (source of truth):
 Title: {title}
+Snippet: {snippet}
 Full Article: {full_article}
 
 CLAIMS TO VERIFY (from the writer's draft):
@@ -51,6 +52,7 @@ RESEARCH_REVIEW_PROMPT = """You are a pragmatic fact-checker for an AI research 
 
 REFERENCE CONTEXT (source of truth):
 Title: {title}
+Snippet: {snippet}
 Full Article: {full_article}
 
 PAPER AUTHORS: {paper_author}
@@ -88,10 +90,14 @@ def review_writer(state: PipelineState) -> PipelineState:
         if item.get("reviewer_status") == "APPROVED":
             continue
 
-        dc = item["distilled_context"]
+        dc = item.get("distilled_context", {})
         writer_draft = item["writer_draft"]
         summary = writer_draft["summary"]
         news_class = item["news_class"]
+
+        title = dc.get("title", item.get("title", ""))
+        snippet = dc.get("snippet", item.get("snippet", ""))
+        full_article = dc.get("full_article") or snippet
 
         # ─── Build the review prompt based on class ───
         if news_class == 2:
@@ -99,12 +105,13 @@ def review_writer(state: PipelineState) -> PipelineState:
 
             SESSION_PROMPT = PromptTemplate(
                 template=RESEARCH_REVIEW_PROMPT,
-                input_variables=["title", "full_article","paper_author", "paper_abstract", "summary"]
+                input_variables=["title", "snippet", "full_article", "paper_author", "paper_abstract", "summary"]
             )
 
             SESSION_PROMPT = SESSION_PROMPT.invoke({
-                "title" : dc.get("title", ""),
-                "full_article" : dc.get("full_article", ""),
+                "title" : title,
+                "snippet" : snippet,
+                "full_article" : full_article,
                 "paper_author" : arxiv.get("paper_author", "Not available"),
                 "paper_abstract" : arxiv.get("paper_abstract", "Not available"),
                 "summary" : summary,
@@ -114,12 +121,13 @@ def review_writer(state: PipelineState) -> PipelineState:
 
             SESSION_PROMPT = PromptTemplate(
                 template=GENERAL_REVIEW_PROMPT,
-                input_variables=["title", "full_article","summary"]
+                input_variables=["title", "snippet", "full_article", "summary"]
             )
 
             SESSION_PROMPT = SESSION_PROMPT.invoke({
-                "title" : dc.get("title", ""),
-                "full_article" : dc.get("full_article", ""),
+                "title" : title,
+                "snippet" : snippet,
+                "full_article" : full_article,
                 "summary" : summary,
             })
 
@@ -127,15 +135,6 @@ def review_writer(state: PipelineState) -> PipelineState:
         try:
             result = structured_reviewer.invoke(SESSION_PROMPT)
 
-            # # Parse JSON response
-            # cleaned = result
-            # if cleaned.startswith("```"):
-            #     cleaned = cleaned.split("\n", 1)[1]
-            # if cleaned.endswith("```"):
-            #     cleaned = cleaned.rsplit("```", 1)[0]
-            # cleaned = cleaned.strip()
-
-            # decision = json.loads(cleaned)
             verdict = result.get("verdict", "rejected").upper()
             feedback = result.get("feedback", "No reason provided.")
 
